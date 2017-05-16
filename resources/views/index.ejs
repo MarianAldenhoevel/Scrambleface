@@ -1,5 +1,17 @@
 <% layout('layouts/nomenu') -%>
 
+    <style>
+        form {
+            position: relative;
+            max-width: 40em;
+            padding: 1em;
+            margin-left: 1em;
+            border: 1px solid black;
+            border-radius: 5px;
+            background-color: #aaaaaa;
+        }
+    </style>
+
     <div>
         <div class="container">
             <h1>Welcome to ScrambleFace
@@ -14,10 +26,13 @@
             </p>
             <p>A live deployment of the server is at <a href="http://scrambleface.qvwx.de/index">http://scrambleface.qvwx.de/index</a></p>
             <h2>API</h2>
-            <p>The API is simple http decorated with custom headers at a whim. This document when delivered from an active server has living examples, so pattern your usage after it for success.</p>
+            <p>The API is simple http decorated with custom headers at a whim. This document when delivered from an active server
+                has living examples, so pattern your usage after it for success.</p>
             <h3>POST for upload</h3>
             <p>The server supports standard multipart-form-data uploads like from this trivially simple form:</p>
-            <form>
+            <form ref='uploadForm' id='uploadForm' action='/upload' method='post' encType="multipart/form-data">
+                <input type="file" name="file" />
+                <input type='submit' value='Submit' />
             </form>
             <h3>GET for download</h3>
             <p>GET-requests can be used to retrieve specific or random images in complete and tiled form.</p>

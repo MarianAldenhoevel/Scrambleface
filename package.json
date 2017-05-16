@@ -9,6 +9,7 @@
     "ejs": "*",
     "ejs-locals": "*",
     "express": "*",
+    "express-fileupload": "^0.1.3",
     "fs.extra": "*",
     "helmet": "*",
     "log4js": "*",

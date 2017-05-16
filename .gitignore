@@ -5,5 +5,7 @@ npm-debug.log*
 
 build
 
-# Dependency directories
+data/db/
+data/upload/
+
 node_modules/
