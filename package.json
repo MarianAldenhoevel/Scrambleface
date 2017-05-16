@@ -1,0 +1,30 @@
+{
+  "name": "ScrambleFace",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "body-parser": "*",
+    "compression": "*",
+    "config": "*",
+    "ejs": "*",
+    "ejs-locals": "*",
+    "express": "*",
+    "fs.extra": "*",
+    "helmet": "*",
+    "log4js": "*",
+    "morgan": "*",
+    "serve-favicon": "*",
+    "serve-static": "*",
+    "uuid": "^3.0.1"
+  },
+  "devDependencies": {
+    "grunt": "^1.0.1",
+    "grunt-contrib-clean": "*",
+    "grunt-contrib-copy": "*",
+    "grunt-contrib-htmlmin": "*",
+    "grunt-contrib-jshint": "*",
+    "grunt-contrib-watch": "*",
+    "grunt-jsbeautifier": "*",
+    "grunt-mkdir": "*"
+  }
+}

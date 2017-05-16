@@ -1,0 +1,12 @@
+{
+	"config": {
+		"http": {
+			"port": 8086,
+			"compression": true
+		},
+		"log4js": {
+			"capture_connect": true,
+			"folder": "logs"
+		}
+	}
+}

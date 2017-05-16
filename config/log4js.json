@@ -1,0 +1,29 @@
+{
+    "level": "DEBUG",
+    "replaceConsole": true,
+    "appenders": [
+        {
+            "type": "console",
+            "layout": {
+                "type": "pattern",
+                "pattern": "%d{ISO8601} %p %c - %m"         
+            }
+        },
+        {
+            "type": "dateFile",
+            "filename": "./logs/ServiceBroker",
+            "pattern": "_yyyy-MM-dd.log",
+            "alwaysIncludePattern": true,
+            "layout": {
+                "type": "pattern",
+                "pattern": "%d{ISO8601} %p %c - %m"                
+            }
+        }
+    ],
+	"levels": {
+		"[all]": "DEBUG",
+        "DB.ConnectionPool": "DEBUG",
+		"Service.Base": "DEBUG",
+		"Service.System.Login": "TRACE"
+    }
+}
