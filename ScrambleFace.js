@@ -46,6 +46,7 @@ var templateengine = require("ejs-locals");
 var fs = require("fs.extra");
 var querystring = require("querystring");
 var uuidV4 = require('uuid/v4');
+var jimp = require("jimp");
 
 var config = require("config").config;
 
@@ -110,17 +111,41 @@ function serveErr(req, res, err) {
     return res.status(500).send(err.toString());
 }
 
-function processupload(file, resolve) {
-    logger.trace(file);
+function processupload(file) {
+    // logger.trace(file);
 
-    file.id = uuidV4();
-    file.mv(path.join(config.uploaddir, file.id), function(err) {
-        if (err) { 
-            throw err; 
-        } else { 
-            resolve(file);
-        }
-    })    
+    // Save to local file
+    var ops = new Promise(function(resolve, reject) {
+        file.id = uuidV4();
+        var filename = path.join(config.uploaddir, file.id);
+        logger.trace(file.name + " - saving to \"" + filename + "\"");
+        file.mv(filename, function(err) {
+            if (err) { 
+                throw err; 
+            } else { 
+                resolve(file);
+            }
+        })
+    }).then(function(file) {
+        logger.trace(file.name + " - read");
+        return jimp.read(file.data)
+    }).then(function(img) {
+        logger.trace(file.name + " - process");
+        return img.resize(256, jimp.AUTO) // resize to fixed width
+         .quality(60)                 // set JPEG quality
+         .greyscale()                 // set greyscale
+    }).then(function(img) {
+        console.log(img);
+
+        var filename = path.join(config.uploaddir, file.id + ".processed.jpg");
+        logger.trace(file.name + " - write processed to \"" + filename + "\"");
+        img.write(filename); 
+    }).then(function(img) {
+        logger.trace(file.name + " - done");
+        return(file);
+    });
+
+    return ops;   
 }
 
 app.post('/upload', function (req, res) {
@@ -133,9 +158,7 @@ app.post('/upload', function (req, res) {
             var file = req.files[prop];
 
             if (file.name && file.data) {
-                fileprocessors.push(new Promise(function (resolve, reject) {
-                    processupload(file, resolve);
-                }));
+                fileprocessors.push(processupload(file));
             }
         }
     }

@@ -1,5 +1,5 @@
 {
-    "level": "DEBUG",
+    "level": "TRACE",
     "replaceConsole": true,
     "appenders": [
         {
@@ -21,9 +21,6 @@
         }
     ],
 	"levels": {
-		"[all]": "DEBUG",
-        "DB.ConnectionPool": "DEBUG",
-		"Service.Base": "DEBUG",
-		"Service.System.Login": "TRACE"
+		"[all]": "TRACE"
     }
 }
