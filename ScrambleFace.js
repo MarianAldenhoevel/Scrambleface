@@ -45,8 +45,8 @@ var path = require("path");
 var templateengine = require("ejs-locals");
 var fs = require("fs.extra");
 var querystring = require("querystring");
-var uuidV4 = require('uuid/v4');
-var jimp = require("jimp");
+var uuidV4 = require("uuid/v4");
+var gm = require("gm").subClass({imageMagick: true});
 
 var config = require("config").config;
 
@@ -64,9 +64,12 @@ if (config.log4js && config.log4js.capture_connect) {
     app.use(log4js.connectLogger(log4js.getLogger("Connect"), { level: "auto" }));
 }
 
-config.uploaddir = config.uploaddir || path.join(__dirname, "data/upload");
-logger.info("Uploads go to \"" + config.uploaddir + "\".");
-fs.mkdirpSync(config.uploaddir);
+config.datadir = config.datadir || path.join(__dirname, "data");
+logger.info("datadir = \"" + config.datadir + "\".");
+fs.mkdirpSync(config.datadir);
+
+config.incomingdir = config.incomingdir || path.join(config.datadir, "incoming");
+fs.mkdirpSync(config.incomingdir);
 
 app.engine("ejs", templateengine);
 app.set("views", path.join(__dirname, "/resources/views"));
@@ -114,33 +117,67 @@ function serveErr(req, res, err) {
 function processupload(file) {
     // logger.trace(file);
 
-    // Save to local file
     var ops = new Promise(function(resolve, reject) {
+        // Create a unique ID for the file and save it
+        // to the incoming folder unchanged.
         file.id = uuidV4();
-        var filename = path.join(config.uploaddir, file.id);
+        var filename = path.join(config.incomingdir, file.id);
         logger.trace(file.name + " - saving to \"" + filename + "\"");
-        file.mv(filename, function(err) {
-            if (err) { 
-                throw err; 
-            } else { 
-                resolve(file);
+
+        // Create an object with the metadata only.
+        var filemetadata = Object.assign({}, file);
+        delete filemetadata.data;
+
+        // Save metadata
+        fs.writeFile(filename + ".meta.json", JSON.stringify(filemetadata, null, 4), function(err) {
+            if(err) { 
+                throw(err); 
+            } else {
+                // Save image data
+                file.mv(filename, function(err) {
+                    if (err) { 
+                        throw err; 
+                    } else { 
+                        resolve(file);
+                    }
+                })
             }
         })
     }).then(function(file) {
         logger.trace(file.name + " - read");
-        return jimp.read(file.data)
-    }).then(function(img) {
+        file.img = gm(file.data, file.name);
+        return file;
+    }).then(function(file) {
         logger.trace(file.name + " - process");
-        return img.resize(256, jimp.AUTO) // resize to fixed width
-         .quality(60)                 // set JPEG quality
-         .greyscale()                 // set greyscale
+        return file.img.resize(256) // resize to fixed width
+         // .rotate("white", 30).channel("Gray")
     }).then(function(img) {
-        console.log(img);
-
-        var filename = path.join(config.uploaddir, file.id + ".processed.jpg");
-        logger.trace(file.name + " - write processed to \"" + filename + "\"");
-        img.write(filename); 
-    }).then(function(img) {
+        return new Promise(function(resolve, reject) {
+            file.dirname = path.join(config.datadir, file.id);
+            console.log(file.name + "- create folder \"" + file.dirname + "\"");
+            
+            fs.mkdirp(file.dirname, function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(file);
+                }
+            })
+        })
+    }).then(function(file) {
+        file.fullname = path.join(file.dirname, "full.jpg");
+        logger.trace(file.name + " - write processed image to \"" + file.fullname + "\"");
+        
+        return new Promise(function(resolve, reject) {
+            file.img.write(file.fullname, function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(file);
+                }
+            })
+        })     
+    }).then(function(file) {
         logger.trace(file.name + " - done");
         return(file);
     });

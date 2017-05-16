@@ -31,7 +31,9 @@
             <h3>POST for upload</h3>
             <p>The server supports standard multipart-form-data uploads like from this trivially simple form:</p>
             <form ref='uploadForm' id='uploadForm' action='/upload' method='post' encType="multipart/form-data">
-                <input type="file" name="file" />
+                <input type="file" name="file0" /><br/>
+                <input type="file" name="file1" /><br/>
+                <input type="file" name="file2" /><br/>
                 <input type='submit' value='Submit' />
             </form>
             <h3>GET for download</h3>
