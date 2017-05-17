@@ -46,7 +46,7 @@ var templateengine = require("ejs-locals");
 var fs = require("fs.extra");
 var querystring = require("querystring");
 var uuidV4 = require("uuid/v4");
-var gm = require("gm").subClass({imageMagick: true});
+var gm = require("gm").subClass({ imageMagick: true });
 
 var config = require("config").config;
 
@@ -114,10 +114,19 @@ function serveErr(req, res, err) {
     return res.status(500).send(err.toString());
 }
 
-function processupload(file) {
-    // logger.trace(file);
+function processorError(file, err) {
+    var result = err;
+    if (!(result instanceof Error)) {
+        result = new Error(err);
+        logger.error(result);
+    }
+    result.file = file;
+    return result;
+}
 
-    var ops = new Promise(function(resolve, reject) {
+function processupload(file) {
+
+    var ops = new Promise(function (resolve, reject) {
         // Create a unique ID for the file and save it
         // to the incoming folder unchanged.
         file.id = uuidV4();
@@ -129,60 +138,84 @@ function processupload(file) {
         delete filemetadata.data;
 
         // Save metadata
-        fs.writeFile(filename + ".meta.json", JSON.stringify(filemetadata, null, 4), function(err) {
-            if(err) { 
-                throw(err); 
+        fs.writeFile(filename + ".meta.json", JSON.stringify(filemetadata, null, 4), function (err) {
+            if (err) {
+                throw processorError(file, err);
             } else {
                 // Save image data
-                file.mv(filename, function(err) {
-                    if (err) { 
-                        throw err; 
-                    } else { 
+                file.mv(filename, function (err) {
+                    if (err) {
+                        reject(processorError(file, err));
+                    } else {
                         resolve(file);
                     }
                 })
             }
         })
-    }).then(function(file) {
-        logger.trace(file.name + " - read");
-        file.img = gm(file.data, file.name);
-        return file;
-    }).then(function(file) {
-        logger.trace(file.name + " - process");
-        return file.img.resize(256) // resize to fixed width
-         // .rotate("white", 30).channel("Gray")
-    }).then(function(img) {
-        return new Promise(function(resolve, reject) {
-            file.dirname = path.join(config.datadir, file.id);
-            console.log(file.name + "- create folder \"" + file.dirname + "\"");
-            
-            fs.mkdirp(file.dirname, function(err) {
+    }).then(function (file) {
+        return new Promise(function (resolve, reject) {
+            logger.trace(file.name + " - read");
+            file.img = gm(file.data, file.name);
+            logger.trace(file.name + " - identify");
+            file.img.identify(function (err, data) {
                 if (err) {
-                    reject(err);
+                    reject(processorError(file, "File not identified as image"));
+                } else {
+                    logger.trace(data);
+                    file.identify = data;
+                    resolve(file);
+                }
+            });
+        });
+    }).then(function (file) {
+        logger.trace(file.name + " - process");
+        file.img.resize(256) // resize to fixed width
+        return file;
+        // .rotate("white", 30).channel("Gray")
+    }).then(function (file) {
+        return new Promise(function (resolve, reject) {
+            file.dirname = path.join(config.datadir, file.id);
+            logger.trace(file.name + " - create folder \"" + file.dirname + "\"");
+
+            fs.mkdirp(file.dirname, function (err) {
+                if (err) {
+                    reject(processorError(file, err));
                 } else {
                     resolve(file);
                 }
             })
         })
-    }).then(function(file) {
+    }).then(function (file) {
         file.fullname = path.join(file.dirname, "full.jpg");
         logger.trace(file.name + " - write processed image to \"" + file.fullname + "\"");
-        
-        return new Promise(function(resolve, reject) {
-            file.img.write(file.fullname, function(err) {
+
+        return new Promise(function (resolve, reject) {
+            file.img.write(file.fullname, function (err) {
                 if (err) {
-                    reject(err);
+                    reject(processorError(file, err));
                 } else {
                     resolve(file);
                 }
             })
-        })     
-    }).then(function(file) {
+        })
+    }).then(function (file) {
         logger.trace(file.name + " - done");
-        return(file);
+        return (file);
     });
 
-    return ops;   
+    return ops;
+}
+
+function reflect(promise) {
+    return promise
+        .then(function (result) {
+            return { "status": "resolved", "file": result }
+        })
+        .catch(function (error) {
+            var file = error.file;
+            delete error.file;
+            return { "status": "rejected", "file": file, "error": error };
+        })
 }
 
 app.post('/upload', function (req, res) {
@@ -195,7 +228,7 @@ app.post('/upload', function (req, res) {
             var file = req.files[prop];
 
             if (file.name && file.data) {
-                fileprocessors.push(processupload(file));
+                fileprocessors.push(reflect(processupload(file)));
             }
         }
     }
@@ -203,19 +236,37 @@ app.post('/upload', function (req, res) {
     if (fileprocessors.length == 0) {
         return res.status(500).send('No files were uploaded.');
     } else {
-        Promise.all(fileprocessors).then(function (results) {
-            var response = results.map(function (val) {
-                return {
-                    "name": val.name,
-                    "id": val.id
-                }
-            });
 
-            return res.status(200).send(JSON.stringify(response, null, 4));
-        }).catch(function (err) {
-            serveErr(req, res, err);
+        // Resolve all processors. As they are all reflected we can be certain they
+        // resolve and never reject.
+        Promise.all(fileprocessors).then(function (results) {
+            var response = [];
+            var responseOK = true;
+
+            for (var i = 0; i < results.length; i++) {
+                var result = results[i];
+
+                var entry = {
+                    "name": result.file.name,
+                    "id": result.file.id
+                }
+
+                if (result.status != "resolved") {
+                    if (result.error.message) {
+                        entry.error = result.error.message;
+                    } else {
+                        entry.error = result.error;
+                    }
+                    responseOK = false;
+                }
+
+                response.push(entry);
+
+            };
+
+            return res.status(responseOK ? 200 : 500).send(JSON.stringify(response, null, 4));
         });
-    };
+    }
 });
 
 app.get("/:viewname", function (req, res) {
