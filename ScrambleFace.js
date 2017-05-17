@@ -51,7 +51,7 @@ var gm = require("gm").subClass({ imageMagick: true });
 var config = require("config").config;
 var Faced = require('faced');
 var faced = new Faced();
-
+var sqlite3 = require('sqlite3').verbose();
 var app = express();
 
 // compression requested?
@@ -75,6 +75,53 @@ fs.mkdirpSync(config.incomingdir);
 
 config.dbdir = config.dbdir || path.join(config.datadir, "db");
 fs.mkdirpSync(config.dbdir);
+
+var db = new sqlite3.Database(path.join(config.dbdir, "data.db"));
+
+// Encapsulate a SQLite DDL-Statement as promise.
+function dbRunDDL(file, sql, params) {
+    return new Promise(function (resolve, reject) {
+        logger.trace("dbRunDDL():\n" + sql + (params ? ("\n" + JSON.stringify(params, null, 4)) : ""));
+
+        db.run(sql, params, function (err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(file);
+            }
+        })
+    })
+}
+
+// Encapsulate a SQLite DML-Statement as promise.
+function dbRunDML(file, sql, params) {
+    return new Promise(function (resolve, reject) {
+        logger.trace("dbRunDML():\n" + sql + (params ? ("\n" + JSON.stringify(params, null, 4)) : ""));
+
+        db.run(sql, params, function (err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(file);
+            }
+        })
+    })
+}
+
+// Encapsulate a SQLite SELECT-Statement as promise.
+function dbRunSELECT(sql, params) {
+    return new Promise(function (resolve, reject) {
+        logger.trace("dbRunSELECT():\n" + sql + (params ? ("\n" + JSON.stringify(params, null, 4)) : ""));
+
+        db.all(sql, params, function (err, rows) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(rows);
+            }
+        })
+    })
+}
 
 app.engine("ejs", templateengine);
 app.set("views", path.join(__dirname, "/resources/views"));
@@ -116,7 +163,10 @@ app.get("/", function (req, res) {
 
 function serveErr(req, res, err) {
     logger.error(err);
-    return res.status(500).send(err.toString());
+    res.setHeader("Content-Type", "application/json");
+    return res
+        .status(500)
+        .send({ "message": err.message });
 }
 
 function processorError(file, err) {
@@ -341,6 +391,12 @@ function processupload(file) {
         return Promise.all(tiles).then(function (result) { return file; });
     });
     ops = ops.then(function (file) {
+        // Insert the metadata for this upload into the DB to make it available for list operations.
+        return dbRunDML(file,
+            "INSERT INTO images (id, name, uploadtime) VALUES ($id, $name, $uploadtime)",
+            { "$id": file.id, "$name": file.name, "$uploadtime": new Date().getTime() });
+    });
+    ops = ops.then(function (file) {
         logger.trace(file.name + " - done");
         return (file);
     });
@@ -361,6 +417,7 @@ function reflect(promise) {
 }
 
 app.post('/upload', function (req, res) {
+    logger.trace("/upload");
 
     var fileprocessors = [];
 
@@ -376,7 +433,10 @@ app.post('/upload', function (req, res) {
     }
 
     if (fileprocessors.length == 0) {
-        return res.status(500).send('No files were uploaded.');
+        res.setHeader("Content-Type", "text/plain");
+        return res
+            .status(500)
+            .send('No files were uploaded.');
     } else {
 
         // Resolve all processors. As they are all reflected we can be certain they
@@ -406,8 +466,100 @@ app.post('/upload', function (req, res) {
 
             };
 
+            res.setHeader("Content-Type", "application/json");
             return res.status(responseOK ? 200 : 500).send(JSON.stringify(response, null, 4));
         });
+    }
+});
+
+app.get('/faces', function (req, res) {
+    logger.trace("/faces");
+
+    pageindex = req.query.pageindex || 0;
+    pagesize = req.query.pagesize || 100;
+    if (pagesize > 100) {
+        serveErr(req, res, "Pagesize is limited to 100 entries.");
+    } else {
+        dbRunSELECT(
+            "SELECT * FROM images ORDER BY uploadtime LIMIT $limit OFFSET $offset",
+            { "$limit": pagesize, "$offset": pagesize * pageindex }).then(function (rows) {
+                res.setHeader("Content-Type", "application/json");
+                return res
+                    .status(200)
+                    .send(JSON.stringify(rows, null, 4));
+            }).catch(function (err) {
+                serveErr(req, res, err);
+            })
+    }
+});
+
+app.get('/face', function (req, res) {
+    logger.trace("/face");
+
+    function serveImage(id) {
+        var filename = path.join(config.datadir, id, "face.jpg");
+
+        if (fs.existsSync(filename)) {
+            res.sendFile(filename);
+        } else {
+            serveErr(req, res, new Error("Image not found"));
+        }
+    };
+
+    id = req.query.id
+    if (!id) {
+        // return a random image
+        dbRunSELECT("SELECT id FROM images ORDER BY RANDOM() LIMIT 1").then(function (rows) {
+            serveImage(rows[0].ID);
+        })
+    } else {
+        // return the selected full image.
+        serveImage(id);
+    }
+});
+
+function clamp(val, min, max) {
+    if (val < min) {
+        return min;
+    } else if (val > max) {
+        return max;
+    } else {
+        return val;
+    }
+}
+
+function rand(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min)) + min;
+}
+
+app.get('/tile', function (req, res) {
+    logger.trace("/tile");
+
+    function serveTile(id, x, y) {
+        var filename = path.join(config.datadir, id, "tile_" + x + "_" + y + ".jpg");
+
+        if (fs.existsSync(filename)) {
+            res.sendFile(filename);
+        } else {
+            serveErr(req, res, new Error("Image not found"));
+        }
+    };
+
+    id = req.query.id;
+    x = clamp(req.query.x || rand(0, config.screen.tilesHorizontal) , 0, config.screen.tilesHorizontal - 1);
+    y = clamp(req.query.y || rand(0, config.screen.tilesVertical), 0, config.screen.tilesVertical - 1);
+
+    if (!id) {
+        // return a random image
+        dbRunSELECT("SELECT id FROM images ORDER BY RANDOM() LIMIT 1").then(function (rows) {
+            id = rows[0].ID;
+            serveTile(id, x, y)
+        })
+    } else {
+        // return the selected full image.
+        serveTile(id, x, y);
     }
 });
 
@@ -425,6 +577,17 @@ function rendered(req, res, err, data) {
     }
 }
 
-http.createServer(app).listen(config.http.port, function () {
-    logger.info("ScrambleFace http server " + package_json.version + " listening on port " + config.http.port);
-});
+// Set up database
+logger.trace("Setting up DB");
+
+var db = new sqlite3.Database(path.join(config.dbdir, "data.db"));
+var ops = dbRunDDL(db, "CREATE TABLE IF NOT EXISTS images (ID VARCHAR(40) PRIMARY KEY, uploadtime TIMESTAMP, name VARCHAR(200))");
+ops = ops.then(function (db) { dbRunDDL(db, "CREATE INDEX IF NOT EXISTS ix_images_uploadtime ON images (uploadtime)") });
+ops = ops.then(function (db) {
+
+    logger.trace("DB is ready");
+
+    http.createServer(app).listen(config.http.port, function () {
+        logger.info("ScrambleFace http server " + package_json.version + " listening on port " + config.http.port);
+    });
+})

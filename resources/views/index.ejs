@@ -20,29 +20,67 @@
                         <% } %>
             </h1>
             <h2>What is it?</h2>
-            <p>The server for a cloud-toy patterned after the Scramble Suit from A Scanner Darkly<br/>
+            <p>The server for a cloud-toy patterned after the Scramble Suit from A Scanner Darkly:<br/>
                 <img src="https://filmfork-cdn.s3.amazonaws.com/content/scramble.gif"></img><br/>
                 <a href="http://thedissolve.com/features/movie-of-the-week/823-how-animation-stabilizes-a-scanner-darklys-shiftin/">source</a>
             </p>
-            <p>A live deployment of the server is at <a href="http://scrambleface.qvwx.de/index">http://scrambleface.qvwx.de/index</a></p>
-            <h2>API</h2>
-            <p>The API is simple http decorated with custom headers at a whim. This document when delivered from an active server
-                has living examples, so pattern your usage after it for success.</p>
-            <h3>POST for upload</h3>
-            <p>The server supports standard multipart-form-data uploads like from this trivially simple form:</p>
-            <form ref='uploadForm' id='uploadForm' action='/upload' method='post' encType="multipart/form-data">
-                <input type="file" name="file0" /><br/>
-                <input type="file" name="file1" /><br/>
-                <input type="file" name="file2" /><br/>
-                <input type="file" name="file3" /><br/>
-                <input type="file" name="file4" /><br/>
-                <input type="file" name="file5" /><br/>
-                <input type='submit' value='Submit' />
-            </form>
-            <h3>GET for download</h3>
-            <p>GET-requests can be used to retrieve specific or random images in complete and tiled form.</p>
-            <h3>DELETE for remove</h3>
-            <p>DELETE-requests remove image from the pool, there is no security on them.</p>
+            <p>The system accepts image uploads. The images are analyzed and if a single complete face can be identified in
+                them this face is extracted and served as a number of tiles. There are calls that can list the images or
+                return random images and tiles from the collection.
+                <p>A live deployment of the server is at <a href="http://scrambleface.qvwx.de/index">http://scrambleface.qvwx.de/index</a></p>
+                <h2>API</h2>
+                <p>The API is simple http decorated with custom headers at a whim. This document when delivered from an active
+                    server has living examples, so pattern your usage after it for success.</p>
+                <h3>POST /upload</h3>
+                <p>The server supports standard multipart-form-data uploads like from this trivially simple form:</p>
+                <form ref='uploadForm' id='uploadForm' action='/upload' method='post' encType="multipart/form-data">
+                    <input type="file" name="file0" /><br/>
+                    <!--
+                    <input type="file" name="file1" /><br/>
+                    <input type="file" name="file2" /><br/>
+                    <input type="file" name="file3" /><br/>
+                    <input type="file" name="file4" /><br/>
+                    <input type="file" name="file5" /><br/>
+                    -->
+                    <input type='submit' value='Submit' />
+                </form>
+                <p>Multiple images can be POSTed in a single request. Image formats are not documented, internal processing
+                    is implemented mostly by OpenCV 2.4 and ImageMagick. So you might reasonably expect the intersection
+                    of formats supported by both to work.
+                </p>
+                <p>The server returns either a 200 OK response or 500 Internal Server Error. With each comes a body in JSON
+                    format holding an array with one entry per uploaded file telling you wether this individual entry was
+                    successfully processed or not. There is no real ACID on this, so uploading broken files may yield half-initialized
+                    server-side data.</p>
+                <h3>GET /faces</h3>
+                <p>Lists metadata for images the server currently holds. The result is limited to 100 entries but you can specify
+                    pageindex and pagesize to query more results or change paging</p>
+                <ul>
+                    <li><a href="/faces">GET /faces</a> - Get metadata for the last 100 uploads to the system (pagesize and pageindex
+                        implied).</li>
+                    <li><a href="/faces?pagesize=5">GET /faces?pagesize=5</a> - Get metadata for the last 5 uploads to the system
+                        (pageindex=0 implied).</li>
+                    <li><a href="/faces?pagesize=5&pageindex=1">GET /faces?pagesize=5&pageindex=1</a> - Get metadata for the
+                        second page of 5 uploads to the system.</li>
+                </ul>
+                <h3>GET /face</h3>
+                <p>Returns either a random face or a face selected by id.</p>
+                <ul>
+                    <li><a href="/face">GET /face</a> - Get random face.</li>
+                    <li><a href="/face?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">GET /face?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</a> - Get the selected face.</li>
+                </ul>
+                <h3>GET /tile</h3>
+                <p>Returns a random or selected tile from a random or selected face.</p>
+                <p>Faces are selected by id, see the /face API. Tiles are selected by coordinates, the top-left tile is x=0,
+                    y=0, X grows to the right, y grows down. Coordinates are clamped to valid values, missing coordinates
+                    are set to random values.</p>
+                <ul>
+                    <li><a href="/tile">GET /tile</a> - Get random tile from random face.</li>
+                    <li><a href="/tile?x=0&y=0">GET /tile?x=0&y=0</a> - Get top left tile from random face.</li>
+                    <li><a href="/tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">GET /tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</a> - Get random tile from selected face.</li>
+                    <li><a href="/tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx&x=0&y=0">GET /tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx&x=0&y=0</a> - Get top left tile from selected face.</li>
+                </ul>
+
         </div>
     </div>
 
