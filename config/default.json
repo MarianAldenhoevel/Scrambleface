@@ -8,6 +8,13 @@
 			"capture_connect": true,
 			"folder": "logs"
 		},
-        "datadir": null
+        "datadir": null,
+        "saveMarkedFeatures": true,
+        "screen": {
+            "tilesVertical": 6,
+            "tilesHorizontal": 4,
+            "tilePixelVertical": 128,
+            "tilePixelHorizontal": 160
+        }
 	}
 }

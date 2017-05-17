@@ -1,11 +1,11 @@
-# Logs
 logs
 *.log
 npm-debug.log*
 
+.~*
+
 build
 
-data/db/
-data/upload/
+data/*
 
 node_modules/

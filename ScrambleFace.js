@@ -24,12 +24,13 @@ process.argv.forEach(function (val, index, array) {
     }
 });
 
-// Set up logging
+// Set up logging.
 var log4js = require("log4js");
 log4js_config = require("./config/log4js.json");
 log4js.configure(log4js_config);
 var logger = log4js.getLogger("Main");
 
+// Set up other dependencies.
 var helmet = require("helmet");
 var compression = require("compression");
 var express = require("express");
@@ -47,8 +48,9 @@ var fs = require("fs.extra");
 var querystring = require("querystring");
 var uuidV4 = require("uuid/v4");
 var gm = require("gm").subClass({ imageMagick: true });
-
 var config = require("config").config;
+var Faced = require('faced');
+var faced = new Faced();
 
 var app = express();
 
@@ -70,6 +72,9 @@ fs.mkdirpSync(config.datadir);
 
 config.incomingdir = config.incomingdir || path.join(config.datadir, "incoming");
 fs.mkdirpSync(config.incomingdir);
+
+config.dbdir = config.dbdir || path.join(config.datadir, "db");
+fs.mkdirpSync(config.dbdir);
 
 app.engine("ejs", templateengine);
 app.set("views", path.join(__dirname, "/resources/views"));
@@ -124,6 +129,17 @@ function processorError(file, err) {
     return result;
 }
 
+function checkFeature(file, face, featureName) {
+    if ((!face[featureName]) || (face[featureName].length == 0)) {
+        return processorError(file, featureName + " not found");
+    } else if (face[featureName].length > 1) {
+        return processorError(file, featureName + " found multiple times");
+    } else {
+        // great!
+        return null;
+    }
+}
+
 function processupload(file) {
 
     var ops = new Promise(function (resolve, reject) {
@@ -152,7 +168,10 @@ function processupload(file) {
                 })
             }
         })
-    }).then(function (file) {
+    });
+    ops = ops.then(function (file) {
+        // Read image using gm for preprocessing it before we
+        // attempt face-detection.
         return new Promise(function (resolve, reject) {
             logger.trace(file.name + " - read");
             file.img = gm(file.data, file.name);
@@ -167,12 +186,10 @@ function processupload(file) {
                 }
             });
         });
-    }).then(function (file) {
-        logger.trace(file.name + " - process");
-        file.img.resize(256) // resize to fixed width
-        return file;
-        // .rotate("white", 30).channel("Gray")
-    }).then(function (file) {
+    });
+    ops = ops.then(function (file) {
+        // Create folder for this uploaded image and all subordinate
+        // files created from it.
         return new Promise(function (resolve, reject) {
             file.dirname = path.join(config.datadir, file.id);
             logger.trace(file.name + " - create folder \"" + file.dirname + "\"");
@@ -185,12 +202,22 @@ function processupload(file) {
                 }
             })
         })
-    }).then(function (file) {
-        file.fullname = path.join(file.dirname, "full.jpg");
-        logger.trace(file.name + " - write processed image to \"" + file.fullname + "\"");
-
+    });
+    ops = ops.then(function (file) {
+        // Preprocess image if required and save to the folder. This has to happen even
+        // if nothing has actually happened in pre-processing because
+        // face-detection will read that file.
         return new Promise(function (resolve, reject) {
-            file.img.write(file.fullname, function (err) {
+
+            // Preprocessing:
+            // Note: All this does is set up a command-line for imageMagick. So it
+            // can be synchronously called and will take almost no time.
+            // file.img.resize(256) // resize to fixed width
+
+            file.preprocessed = path.join(file.dirname, "preprocessed.jpg");
+            logger.trace(file.name + " - write preprocessed image to \"" + file.preprocessed + "\"");
+
+            file.img.write(file.preprocessed, function (err) {
                 if (err) {
                     reject(processorError(file, err));
                 } else {
@@ -198,7 +225,122 @@ function processupload(file) {
                 }
             })
         })
-    }).then(function (file) {
+    });
+    ops = ops.then(function (file) {
+        // Attempt face-detection
+        return new Promise(function (resolve, reject) {
+            logger.trace(file.name + " - face detection");
+            faced.detect(file.preprocessed, function (faces, matrix, filename) {
+
+                // Have we detected exactly one face?
+                if ((!faces) || (faces.length == 0)) {
+                    reject(processorError(file, "No faces found"));
+                } else if (faces.length > 1) {
+                    reject(processorError(file, "Multiple faces found"));
+                } else {
+                    // Get single face detected. Have we got all the features we want.
+                    var face = faces[0];
+                    logger.trace(face);
+
+                    if (r = checkFeature(file, face, "mouth")) reject(r);
+                    else if (r = checkFeature(file, face, "nose")) reject(r);
+                    else if (r = checkFeature(file, face, "eyeLeft")) reject(r);
+                    else if (r = checkFeature(file, face, "eyeRight")) reject(r);
+                    else {
+                        // still here? We got a full-featured face.
+                        file.face = face;
+                        file.matrix = matrix;
+                        resolve(file);
+                    }
+                }
+            })
+        })
+    });
+    if (config.saveMarkedFeatures) {
+        ops = ops.then(function (file) {
+            // Decorate the image marking the features that we detected.
+            // (Nothing async here, so not a new promise with resolve, but a simple return)
+            logger.trace(file.name + " - mark features");
+
+            var colors = {
+                "face": [0, 0, 0],
+                "mouth": [255, 0, 0],
+                "nose": [255, 255, 255],
+                "eyeLeft": [0, 0, 255],
+                "eyeRight": [0, 255, 0]
+            };
+
+            function draw(feature, color) {
+                file.matrix.rectangle(
+                    [feature.getX(), feature.getY()],
+                    [feature.getWidth(), feature.getHeight()],
+                    color,
+                    2
+                );
+            }
+
+            draw(file.face, colors.face);
+            draw(file.face.mouth[0], colors.mouth);
+            draw(file.face.nose[0], colors.nose);
+            draw(file.face.eyeLeft[0], colors.eyeLeft);
+            draw(file.face.eyeRight[0], colors.eyeRight);
+
+            var filename = path.join(file.dirname, "features.jpg");
+            logger.trace(file.name + " - write image with marked features to \"" + filename + "\"");
+
+            file.matrix.save(filename);
+            return (file);
+        })
+    }
+    ops = ops.then(function (file) {
+        // Crop preprocessed image to the actual face, scale it to the
+        // actual dimensions of the target screen and save that to the folder.
+        // Note that this may distort the face that was detected by coercing it
+        // to the aspect ratio of the screen. We accept that because we want 
+        // the faces to match anyway.
+        return new Promise(function (resolve, reject) {
+            file.img.crop(file.face.width, file.face.height, file.face.x, file.face.y)
+            file.img.resize(
+                config.screen.tilesHorizontal * config.screen.tilePixelHorizontal,
+                config.screen.tilesVertical * config.screen.tilePixelVertical, "!");
+
+            file.justface = path.join(file.dirname, "face.jpg");
+            logger.trace(file.name + " - write cropped and resized face image to \"" + file.justface + "\"");
+
+            file.img.write(file.justface, function (err) {
+                if (err) {
+                    reject(processorError(file, err));
+                } else {
+                    resolve(file);
+                }
+            })
+        })
+    });
+    ops = ops.then(function (file) {
+        // Cut the saved face into tiles and save each.
+        var tiles = [];
+
+        for (var x = 0; x < config.screen.tilesHorizontal; x++) {
+            for (var y = 0; y < config.screen.tilesVertical; y++) {
+                tiles.push(new Promise(function (resolve, reject) {
+                    var tilename = path.join(file.dirname, "tile_" + x + "_" + y + ".jpg");
+                    logger.trace(file.name + " - write tile (" + x + "," + y + ") to \"" + tilename + "\"");
+                    gm(file.justface)
+                        .crop(config.screen.tilePixelHorizontal, config.screen.tilePixelVertical, x * config.screen.tilePixelHorizontal, y * config.screen.tilePixelVertical)
+                        .write(tilename, function (err) {
+                            if (err) {
+                                reject(processorError(file, err));
+                            } else {
+                                resolve(file);
+                            }
+                        })
+                }))
+            }
+        }
+
+        return Promise.all(tiles).then(function (result) { return file; });
+    });
+    ops = ops.then(function (file) {
         logger.trace(file.name + " - done");
         return (file);
     });
