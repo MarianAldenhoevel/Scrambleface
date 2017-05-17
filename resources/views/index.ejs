@@ -1,17 +1,5 @@
 <% layout('layouts/nomenu') -%>
 
-    <style>
-        form {
-            position: relative;
-            max-width: 40em;
-            padding: 1em;
-            margin-left: 1em;
-            border: 1px solid black;
-            border-radius: 5px;
-            background-color: #aaaaaa;
-        }
-    </style>
-
     <div>
         <div class="container">
             <h1>Welcome to ScrambleFace
@@ -57,7 +45,8 @@
                     pageindex and pagesize to query more results or change paging</p>
                 <ul>
                     <li><a href="/faces">GET /faces</a> - Get metadata for the last 100 uploads to the system (pagesize and pageindex
-                        implied).</li>
+                        implied).
+                    </li>
                     <li><a href="/faces?pagesize=5">GET /faces?pagesize=5</a> - Get metadata for the last 5 uploads to the system
                         (pageindex=0 implied).</li>
                     <li><a href="/faces?pagesize=5&pageindex=1">GET /faces?pagesize=5&pageindex=1</a> - Get metadata for the
@@ -67,7 +56,7 @@
                 <p>Returns either a random face or a face selected by id.</p>
                 <ul>
                     <li><a href="/face">GET /face</a> - Get random face.</li>
-                    <li><a href="/face?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">GET /face?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</a> - Get the selected face.</li>
+                    <li><a href="/face?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">GET /face?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</a>                        - Get the selected face.</li>
                 </ul>
                 <h3>GET /tile</h3>
                 <p>Returns a random or selected tile from a random or selected face.</p>
@@ -77,13 +66,111 @@
                 <ul>
                     <li><a href="/tile">GET /tile</a> - Get random tile from random face.</li>
                     <li><a href="/tile?x=0&y=0">GET /tile?x=0&y=0</a> - Get top left tile from random face.</li>
-                    <li><a href="/tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">GET /tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</a> - Get random tile from selected face.</li>
-                    <li><a href="/tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx&x=0&y=0">GET /tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx&x=0&y=0</a> - Get top left tile from selected face.</li>
+                    <li><a href="/tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">GET /tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</a>                        - Get random tile from selected face.</li>
+                    <li><a href="/tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx&x=0&y=0">GET /tile?id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx&x=0&y=0</a>                        - Get top left tile from selected face.</li>
                 </ul>
+                <h3>GET /site</h3>
+                <p>Returns JSON information about the site configuration. Mostly about screen geometry.</p>
+                <p>The server is set up with a fixed number and geometry of tiles. Tiling happens at upload-time. This means
+                    these values can not easily be changed, if they are changed the DB needs re-initializing. The</p>
+                <pre>{
+                    <%- JSON.stringify(site,null,4) %>,
+                    <%- JSON.stringify(screen,null,4) %>
+                    }
+                </pre>
+                <ul>
+                    <li><a href="/site">GET /site</a> - Get system config.</li>
+                </ul>
+                <h2>Advanced example (some JS required)</h2>
+                <div id="screen">
+                    <div>
+                    </div>
+                </div>
 
-        </div>
-    </div>
+                <script>
+                    var config = null;
 
-    <script>
+                    function rand(min, max) {
+                        min = Math.ceil(min);
+                        max = Math.floor(max);
+                        return Math.floor(Math.random() * (max - min)) + min;
+                    }
 
-    </script>
+                    function replaceTile() {
+                        // Pick a tile
+                        var x = rand(0, config.screen.tilesHorizontal);
+                        var y = rand(0, config.screen.tilesVertical);
+                        var id = x + "_" + y;
+
+                        console.log("replacing tile " + id);
+
+                        // Create a div, put it on-screen, position it, but keep it
+                        // transparent.
+                        var screen = $("#screen");
+                        screen.append("<div class='tile' id='" + id + "_new'></div>");
+
+                        $("#" + id + "_new").hide().css({
+                            "position": "absolute",
+                            "left": x * config.screen.tilePixelHorizontal,
+                            "top": y * config.screen.tilePixelVertical,
+                            "width": config.screen.tilePixelHorizontal + "px",
+                            "height": config.screen.tilePixelVertical + "px",
+                            // "border": "1px solid black",
+                            "background-image": "url('/tile?x=" + x + "&y=" + y + "&bust=" + (new Date().getTime()) + "')"
+                        });
+
+                        // Fade new tile into visibility                        
+                        $("#" + id + "_new").fadeIn(200, function() {
+                            console.log("fadeIn complete");
+                            // remove old tile.
+                            $("#" + id).remove();
+                            
+                            // re-ID current tile.
+                            $("#" + id + "_new").attr("id", id);
+                            
+                            // Schedule next tile-swap
+                            setTimeout(replaceTile, 500);
+                            
+                        })
+                    }
+
+                    $(document).ready(function () {
+                        console.log("ready().");
+
+                        // Fetch the configuration from the server.
+                        $.ajax({
+                            url: "/site"
+                        }).done(function (data) {
+                            console.log("Config retrieved.");
+                            config = data;
+
+                            // Create and position a div for each tile in the virtual screen.                           
+                            var screen = $("#screen");
+                            screen.css({
+                                "position": "relative",
+                                "width": (config.screen.tilePixelHorizontal * config.screen.tilesHorizontal) + "px",
+                                "height": (config.screen.tilePixelVertical * config.screen.tilesVertical) + "px"
+                            });
+
+                            for (var y = 0; y < config.screen.tilesVertical; y++) {
+                                for (var x = 0; x < config.screen.tilesHorizontal; x++) {
+                                    var id = x + "_" + y;
+                                    screen.append("<div class='tile' id='" + id + "'></div>");
+
+                                    $("#" + id).css({
+                                        "position": "absolute",
+                                        "left": x * config.screen.tilePixelHorizontal,
+                                        "top": y * config.screen.tilePixelVertical,
+                                        "width": config.screen.tilePixelHorizontal + "px",
+                                        "height": config.screen.tilePixelVertical + "px",
+                                        // "border": "1px solid black",
+                                        "background-image": "url('/tile?x=" + x + "&y=" + y + "&bust=" + (new Date().getTime()) + "')" 
+                                    });
+                                }
+                            }
+
+                            setTimeout(replaceTile, 500);
+
+                        });
+                    });
+                </script>

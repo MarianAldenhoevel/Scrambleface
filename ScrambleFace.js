@@ -150,6 +150,7 @@ function createModel(req, err) {
     var model = {
         "err": err,
         "site": config.site || {},
+        "screen": config.screen
     };
 
     model.site.version = package_json.version;
@@ -561,6 +562,11 @@ app.get('/tile', function (req, res) {
         // return the selected full image.
         serveTile(id, x, y);
     }
+});
+
+app.get("/site", function (req, res) {
+    res.setHeader("Content-Type", "application/json");
+    return res.status(200).send(JSON.stringify(createModel(req), null, 4));
 });
 
 app.get("/:viewname", function (req, res) {
