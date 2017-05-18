@@ -84,6 +84,7 @@
                 <h2>Advanced example (some JS required)</h2>
                 <div id="screen">
                     <div>
+                        <button id="btnStart">Start</button>
                     </div>
                 </div>
 
@@ -120,57 +121,59 @@
                         });
 
                         // Fade new tile into visibility                        
-                        $("#" + id + "_new").fadeIn(200, function() {
+                        $("#" + id + "_new").fadeIn(200, function () {
                             console.log("fadeIn complete");
                             // remove old tile.
                             $("#" + id).remove();
-                            
+
                             // re-ID current tile.
                             $("#" + id + "_new").attr("id", id);
-                            
+
                             // Schedule next tile-swap
                             setTimeout(replaceTile, 500);
-                            
+
                         })
                     }
 
                     $(document).ready(function () {
                         console.log("ready().");
 
-                        // Fetch the configuration from the server.
-                        $.ajax({
-                            url: "/site"
-                        }).done(function (data) {
-                            console.log("Config retrieved.");
-                            config = data;
+                        $("#btnStart").click(function () {
+                            // Fetch the configuration from the server.
+                            $.ajax({
+                                url: "/site"
+                            }).done(function (data) {
+                                console.log("Config retrieved.");
+                                config = data;
 
-                            // Create and position a div for each tile in the virtual screen.                           
-                            var screen = $("#screen");
-                            screen.css({
-                                "position": "relative",
-                                "width": (config.screen.tilePixelHorizontal * config.screen.tilesHorizontal) + "px",
-                                "height": (config.screen.tilePixelVertical * config.screen.tilesVertical) + "px"
-                            });
+                                // Create and position a div for each tile in the virtual screen.                           
+                                var screen = $("#screen");
+                                screen.css({
+                                    "position": "relative",
+                                    "width": (config.screen.tilePixelHorizontal * config.screen.tilesHorizontal) + "px",
+                                    "height": (config.screen.tilePixelVertical * config.screen.tilesVertical) + "px"
+                                });
 
-                            for (var y = 0; y < config.screen.tilesVertical; y++) {
-                                for (var x = 0; x < config.screen.tilesHorizontal; x++) {
-                                    var id = x + "_" + y;
-                                    screen.append("<div class='tile' id='" + id + "'></div>");
+                                for (var y = 0; y < config.screen.tilesVertical; y++) {
+                                    for (var x = 0; x < config.screen.tilesHorizontal; x++) {
+                                        var id = x + "_" + y;
+                                        screen.append("<div class='tile' id='" + id + "'></div>");
 
-                                    $("#" + id).css({
-                                        "position": "absolute",
-                                        "left": x * config.screen.tilePixelHorizontal,
-                                        "top": y * config.screen.tilePixelVertical,
-                                        "width": config.screen.tilePixelHorizontal + "px",
-                                        "height": config.screen.tilePixelVertical + "px",
-                                        // "border": "1px solid black",
-                                        "background-image": "url('/tile?x=" + x + "&y=" + y + "&bust=" + (new Date().getTime()) + "')" 
-                                    });
+                                        $("#" + id).css({
+                                            "position": "absolute",
+                                            "left": x * config.screen.tilePixelHorizontal,
+                                            "top": y * config.screen.tilePixelVertical,
+                                            "width": config.screen.tilePixelHorizontal + "px",
+                                            "height": config.screen.tilePixelVertical + "px",
+                                            // "border": "1px solid black",
+                                            "background-image": "url('/tile?x=" + x + "&y=" + y + "&bust=" + (new Date().getTime()) + "')"
+                                        });
+                                    }
                                 }
-                            }
 
-                            setTimeout(replaceTile, 500);
+                                setTimeout(replaceTile, 500);
 
+                            });
                         });
                     });
                 </script>

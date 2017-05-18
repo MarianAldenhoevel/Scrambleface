@@ -511,7 +511,11 @@ app.get('/face', function (req, res) {
     if (!id) {
         // return a random image
         dbRunSELECT("SELECT id FROM images ORDER BY RANDOM() LIMIT 1").then(function (rows) {
-            serveImage(rows[0].ID);
+            if (rows.length == 0) {
+                serveErr(req, res, new Error("No images"));
+            } else {
+                serveImage(rows[0].id);
+            }
         })
     } else {
         // return the selected full image.
@@ -555,8 +559,11 @@ app.get('/tile', function (req, res) {
     if (!id) {
         // return a random image
         dbRunSELECT("SELECT id FROM images ORDER BY RANDOM() LIMIT 1").then(function (rows) {
-            id = rows[0].ID;
-            serveTile(id, x, y)
+            if (rows.length == 0) {
+                serveErr(req, res, new Error("No images"));
+            } else {
+                serveTile(rows[0].id, x, y);
+            }
         })
     } else {
         // return the selected full image.
@@ -587,7 +594,7 @@ function rendered(req, res, err, data) {
 logger.trace("Setting up DB");
 
 var db = new sqlite3.Database(path.join(config.dbdir, "data.db"));
-var ops = dbRunDDL(db, "CREATE TABLE IF NOT EXISTS images (ID VARCHAR(40) PRIMARY KEY, uploadtime TIMESTAMP, name VARCHAR(200))");
+var ops = dbRunDDL(db, "CREATE TABLE IF NOT EXISTS images (id VARCHAR(40) PRIMARY KEY, uploadtime TIMESTAMP, name VARCHAR(200))");
 ops = ops.then(function (db) { dbRunDDL(db, "CREATE INDEX IF NOT EXISTS ix_images_uploadtime ON images (uploadtime)") });
 ops = ops.then(function (db) {
 
